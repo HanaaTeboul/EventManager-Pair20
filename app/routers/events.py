@@ -55,13 +55,14 @@ def list_events(
             Event.title.ilike(f"%{search}%")
         )
 
-    return query.order_by(Event.date).all()
-
     if location:
         query = query.filter(
             Event.location.ilike(f"%{location}%")
         )
-        
+
+    return query.order_by(Event.date).all()
+
+
 @router.get(
     "/{event_id}",
     response_model=EventSchema
