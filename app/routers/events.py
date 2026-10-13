@@ -53,11 +53,13 @@ def list_events(
     if location:
         query = query.filter(
             Event.location.ilike(f"%{location}%")
+
         )
 
     if title:
         query = query.filter(
             Event.title.ilike(f"%{title}%")
+
         )
 
     return query.order_by(Event.date).all()
