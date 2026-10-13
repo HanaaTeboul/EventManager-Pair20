@@ -44,16 +44,10 @@ def create_event(
     response_model=list[EventSchema]
 )
 def list_events(
-    search: str | None = Query(default=None),
     location: str | None = Query(default=None),
     db: Session = Depends(get_db)
 ):
     query = db.query(Event)
-
-    if search:
-        query = query.filter(
-            Event.title.ilike(f"%{search}%")
-        )
 
     if location:
         query = query.filter(
