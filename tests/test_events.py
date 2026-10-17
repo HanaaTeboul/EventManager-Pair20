@@ -1,4 +1,3 @@
-
 from app.event_filter import (
     filter_events_by_location,
     filter_events_by_title,
@@ -43,3 +42,4 @@ def test_filter_title_with_partial_match(prepopulated_event_store):
 
     assert len(result) == 1
     assert result[0]["title"] == "Python Workshop"
+
