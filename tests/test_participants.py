@@ -1,80 +1,126 @@
 import pytest
-from pydantic import ValidationError
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.schemas import ParticipantCreate
-from app.services.registration_rules import (
-    has_available_capacity,
-    check_duplicate_registration,
-)
-
-
-# ---------------------------------------------------------
-# HAPPY PATH TESTS (valid input, expected success)
-# ---------------------------------------------------------
-
-def test_valid_participant_creation(sample_participant_dict):
-    participant = ParticipantCreate(**sample_participant_dict)
-    assert participant.name == "Sara Ben"
-    assert participant.email == "sara@example.com"
+from app import models  # noqa: F401  (registers all tables)
+from app.database import Base, get_db
+from app.routers import participants
 
 
-def test_has_available_capacity_true():
-    assert has_available_capacity(5, 10) is True
+@pytest.fixture
+def client():
+    # In-memory SQLite: no events.db file, nothing touches the real database
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app = FastAPI()
+    app.include_router(participants.router)
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as c:
+        yield c
+
+    Base.metadata.drop_all(bind=engine)
 
 
-def test_no_duplicate_does_not_raise():
-    # new id is not in the list, so nothing should happen
-    check_duplicate_registration([1, 2, 3], 4)
+def make_payload(**changes):
+    payload = {"name": "Sara Ben", "email": "sara@example.com"}
+    payload.update(changes)
+    return payload
 
 
-# ---------------------------------------------------------
-# BOUNDARY VALUE TESTS (exact limits)
-# ---------------------------------------------------------
+# ---------------- HAPPY PATH ----------------
 
-def test_capacity_one_below_max():
-    # current = max - 1  -> still room
-    assert has_available_capacity(9, 10) is True
-
-
-def test_capacity_equal_to_max():
-    # current = max  -> full
-    assert has_available_capacity(10, 10) is False
+def test_create_participant_returns_201(client):
+    response = client.post("/participants/", json=make_payload())
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Sara Ben"
+    assert body["email"] == "sara@example.com"
+    assert body["id"] == 1
 
 
-def test_capacity_above_max():
-    # current > max  -> over capacity
-    assert has_available_capacity(11, 10) is False
+def test_get_participant_by_id(client):
+    created = client.post("/participants/", json=make_payload()).json()
+    response = client.get(f"/participants/{created['id']}")
+    assert response.status_code == 200
+    assert response.json()["email"] == "sara@example.com"
 
 
-def test_name_min_length_boundary(sample_participant_dict):
-    # name of exactly 2 characters is valid
-    sample_participant_dict["name"] = "Al"
-    participant = ParticipantCreate(**sample_participant_dict)
-    assert participant.name == "Al"
+def test_list_participants_sorted_by_name(client):
+    client.post("/participants/", json=make_payload(name="Zed", email="z@example.com"))
+    client.post("/participants/", json=make_payload(name="Adam", email="a@example.com"))
+    names = [p["name"] for p in client.get("/participants/").json()]
+    assert names == ["Adam", "Zed"]
 
 
-def test_capacity_zero_current_count():
-    # empty event still has room
-    assert has_available_capacity(0, 1) is True
+def test_list_participants_empty(client):
+    response = client.get("/participants/")
+    assert response.status_code == 200
+    assert response.json() == []
 
 
-# ---------------------------------------------------------
-# NEGATIVE TESTS (invalid input, expected errors)
-# ---------------------------------------------------------
-
-def test_invalid_email_raises(sample_participant_dict):
-    sample_participant_dict["email"] = "not-an-email"
-    with pytest.raises(ValidationError):
-        ParticipantCreate(**sample_participant_dict)
+def test_delete_participant(client):
+    created = client.post("/participants/", json=make_payload()).json()
+    response = client.delete(f"/participants/{created['id']}")
+    assert response.status_code == 204
+    assert client.get(f"/participants/{created['id']}").status_code == 404
 
 
-def test_short_name_raises(sample_participant_dict):
-    # 1 character is below the minimum of 2
-    sample_participant_dict["name"] = "A"
-    with pytest.raises(ValidationError):
-        ParticipantCreate(**sample_participant_dict)
+# ---------------- BOUNDARY VALUES ----------------
+
+def test_create_participant_name_min_length_boundary(client):
+    response = client.post("/participants/", json=make_payload(name="Al"))
+    assert response.status_code == 201
 
 
-def test_duplicate_registration_raises():
-    with pytest.raises(ValueError):
-        check_duplicate_registration([1, 2, 3], 2)
+def test_create_participant_name_max_length_boundary(client):
+    response = client.post("/participants/", json=make_payload(name="A" * 100))
+    assert response.status_code == 201
+
+
+def test_create_participant_name_above_max_returns_422(client):
+    response = client.post("/participants/", json=make_payload(name="A" * 101))
+    assert response.status_code == 422
+
+
+# ---------------- NEGATIVE TESTS ----------------
+
+def test_create_participant_short_name_returns_422(client):
+    response = client.post("/participants/", json=make_payload(name="A"))
+    assert response.status_code == 422
+
+
+def test_create_participant_invalid_email_returns_422(client):
+    response = client.post("/participants/", json=make_payload(email="not-an-email"))
+    assert response.status_code == 422
+
+
+def test_create_participant_duplicate_email_returns_409(client):
+    client.post("/participants/", json=make_payload())
+    response = client.post("/participants/", json=make_payload(name="Other Person"))
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Email is already registered."
+
+
+def test_get_missing_participant_returns_404(client):
+    assert client.get("/participants/999").status_code == 404
+
+
+def test_delete_missing_participant_returns_404(client):
+    assert client.delete("/participants/999").status_code == 404
