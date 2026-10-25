@@ -3,4 +3,6 @@ omit =
     app/main.py
     app/database.py
     app/models.py
-    app/routers/*
+    app/schemas.py
+    app/routers/registrations.py
+    app/routers/__init__.py
