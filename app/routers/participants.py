@@ -106,3 +106,6 @@ def delete_participant(
 
     db.delete(participant)
     db.commit()
+
+
+    
