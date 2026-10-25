@@ -124,3 +124,57 @@ def test_get_missing_participant_returns_404(client):
 
 def test_delete_missing_participant_returns_404(client):
     assert client.delete("/participants/999").status_code == 404
+
+
+
+
+
+@pytest.mark.parametrize("email", ["abc", "a@", "@b.com", "a@b", "a b@c.com", ""])
+def test_create_participant_invalid_emails_return_422(client, email):
+    assert client.post("/participants/", json=make_payload(email=email)).status_code == 422
+
+
+def test_duplicate_email_returns_409_and_message(client):
+    client.post("/participants/", json=make_payload())
+    r = client.post("/participants/", json=make_payload(name="Other Person"))
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Email is already registered."
+    assert len(client.get("/participants/").json()) == 1
+
+
+def test_different_email_is_not_duplicate(client):
+    client.post("/participants/", json=make_payload())
+    r = client.post("/participants/", json=make_payload(email="other@example.com"))
+    assert r.status_code == 201
+
+
+def test_get_missing_participant_message(client):
+    r = client.get("/participants/999")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Participant not found."
+
+
+def test_delete_missing_participant_message(client):
+    r = client.delete("/participants/999")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Participant not found."
+
+
+def test_get_participant_returns_all_fields(client):
+    created = client.post("/participants/", json=make_payload()).json()
+    r = client.get(f"/participants/{created['id']}")
+    assert r.json() == {"id": created["id"], "name": "Sara Ben", "email": "sara@example.com"}
+
+
+def test_list_participants_returns_all(client):
+    client.post("/participants/", json=make_payload(name="Zed", email="z@example.com"))
+    client.post("/participants/", json=make_payload(name="Adam", email="a@example.com"))
+    r = client.get("/participants/")
+    assert len(r.json()) == 2
+
+
+def test_delete_participant_has_empty_body(client):
+    created = client.post("/participants/", json=make_payload()).json()
+    r = client.delete(f"/participants/{created['id']}")
+    assert r.status_code == 204
+    assert r.content == b""
