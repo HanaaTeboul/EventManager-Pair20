@@ -167,3 +167,96 @@ def test_update_event_to_past_date_returns_400(client):
 
 def test_delete_missing_event_returns_404(client):
     assert client.delete("/events/999").status_code == 404
+
+
+def test_create_event_returns_all_fields(client):
+    body = client.post("/events/", json=make_payload()).json()
+    assert body == {
+        "id": 1, "title": "Python Workshop", "description": "Intro",
+        "date": "2030-01-01", "location": "Algiers", "capacity": 50,
+    }
+
+
+def test_create_event_capacity_10001_returns_422(client):
+    assert client.post("/events/", json=make_payload(capacity=10001)).status_code == 422
+
+
+def test_create_event_title_100_ok_101_rejected(client):
+    assert client.post("/events/", json=make_payload(title="A" * 100)).status_code == 201
+    assert client.post("/events/", json=make_payload(title="A" * 101)).status_code == 422
+
+
+def test_search_title_mixed_case(client):
+    client.post("/events/", json=make_payload(title="Python Workshop"))
+    client.post("/events/", json=make_payload(title="DevOps Bootcamp"))
+    r = client.get("/events/", params={"title": "PyThOn"})
+    assert [e["title"] for e in r.json()] == ["Python Workshop"]
+
+
+def test_search_title_partial_match(client):
+    client.post("/events/", json=make_payload(title="Python Workshop"))
+    r = client.get("/events/", params={"title": "work"})
+    assert len(r.json()) == 1
+
+
+def test_search_title_no_match_returns_empty(client):
+    client.post("/events/", json=make_payload())
+    assert client.get("/events/", params={"title": "zzz"}).json() == []
+
+
+def test_search_location_and_title_together(client):
+    client.post("/events/", json=make_payload(title="Python Workshop", location="Algiers"))
+    client.post("/events/", json=make_payload(title="Python Workshop", location="Oran"))
+    r = client.get("/events/", params={"title": "PYTHON", "location": "oRaN"})
+    assert [e["location"] for e in r.json()] == ["Oran"]
+
+
+def test_list_events_empty(client):
+    assert client.get("/events/").json() == []
+
+
+def test_get_missing_event_message(client):
+    r = client.get("/events/999")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Event not found."
+
+
+def test_update_missing_event_message(client):
+    r = client.put("/events/999", json=make_payload())
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Event not found."
+
+
+def test_delete_missing_event_message(client):
+    r = client.delete("/events/999")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Event not found."
+
+
+def test_update_event_past_date_message(client):
+    created = client.post("/events/", json=make_payload()).json()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    r = client.put(f"/events/{created['id']}", json=make_payload(date=yesterday))
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Event date cannot be in the past."
+
+
+def test_update_event_today_is_allowed(client):
+    created = client.post("/events/", json=make_payload()).json()
+    r = client.put(f"/events/{created['id']}", json=make_payload(date=date.today().isoformat()))
+    assert r.status_code == 200
+
+
+def test_update_event_changes_all_fields(client):
+    created = client.post("/events/", json=make_payload()).json()
+    new = make_payload(title="New Title", description="New", date="2031-05-05",
+                       location="Oran", capacity=7)
+    body = client.put(f"/events/{created['id']}", json=new).json()
+    assert body == {**new, "id": created["id"]}
+
+
+def test_delete_event_has_empty_body(client):
+    created = client.post("/events/", json=make_payload()).json()
+    r = client.delete(f"/events/{created['id']}")
+    assert r.status_code == 204
+    assert r.content == b""
