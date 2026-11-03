@@ -1,0 +1,48 @@
+<html><body><h1>app/routers/events.py</h1>Killed 36 out of 40 mutants<h2>Survived</h2>Survived mutation testing. These mutants show holes in your test suite.<h3>Mutant 1</h3><pre>--- app/routers/events.py
++++ app/routers/events.py
+@@ -10,7 +10,7 @@
+ 
+ 
+ router = APIRouter(
+-    prefix="/events",
++    prefix="XX/eventsXX",
+     tags=["Events"]
+ )
+ 
+</pre><h3>Mutant 2</h3><pre>--- app/routers/events.py
++++ app/routers/events.py
+@@ -11,7 +11,7 @@
+ 
+ router = APIRouter(
+     prefix="/events",
+-    tags=["Events"]
++    tags=["XXEventsXX"]
+ )
+ 
+ 
+</pre><h3>Mutant 3</h3><pre>--- app/routers/events.py
++++ app/routers/events.py
+@@ -9,10 +9,7 @@
+ from ..schemas import EventCreate, EventUpdate
+ 
+ 
+-router = APIRouter(
+-    prefix="/events",
+-    tags=["Events"]
+-)
++router = None
+ 
+ 
+ @router.post(
+</pre><h3>Mutant 33</h3><pre>--- app/routers/events.py
++++ app/routers/events.py
+@@ -111,7 +111,7 @@
+     if event_data.date < date.today():
+         raise HTTPException(
+             status_code=400,
+-            detail="Event date cannot be in the past."
++            detail="XXEvent date cannot be in the past.XX"
+         )
+ 
+     for key, value in event_data.model_dump().items():
+</pre></body></html>
