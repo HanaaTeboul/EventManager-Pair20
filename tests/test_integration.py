@@ -1,109 +1,53 @@
-"""Integration tests for the events & participants API."""
-
-from __future__ import annotations
-
 import pytest
 from fastapi.testclient import TestClient
-
 from app.main import app
 
-
-# --------------------------------------------------------------------------- #
-# Fixtures
-# --------------------------------------------------------------------------- #
-@pytest.fixture(scope="module")
-def client():
-    """Provide a test client with the app's lifespan (startup/shutdown) handled."""
-    with TestClient(app) as test_client:
-        yield test_client
+client = TestClient(app)
 
 
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
-def create_event(client: TestClient, **overrides) -> dict:
-    """Create an event and return the parsed response body."""
-    payload = {
-        "title": "Default Event",
+# Integration Test 1: Event Creation & Persistence Verification
+def test_create_and_fetch_event_integration():
+    response = client.post("/events/", json={
+        "title": "DevOps Integration Conf",
         "location": "Constantine",
         "date": "2026-12-01",
-        "capacity": 100,
-    }
-    payload.update(overrides)
+        "capacity": 200
+    })
+    assert response.status_code == 201
+    event_id = response.json()["id"]
 
-    response = client.post("/events/", json=payload)
-    assert response.status_code == 201, response.text
-    return response.json()
-
-
-def create_participant(client: TestClient, **overrides) -> dict:
-    """Create a participant and return the parsed response body."""
-    payload = {
-        "name": "Default Participant",
-        "email": "default@example.com",
-    }
-    payload.update(overrides)
-
-    response = client.post("/participants/", json=payload)
-    assert response.status_code == 201, response.text
-    return response.json()
+    get_resp = client.get(f"/events/{event_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["title"] == "DevOps Integration Conf"
 
 
-# --------------------------------------------------------------------------- #
-# Tests
-# --------------------------------------------------------------------------- #
-def test_create_and_fetch_event_integration(client: TestClient) -> None:
-    """An event created via POST must be retrievable via GET by id."""
-    event = create_event(
-        client,
-        title="DevOps Integration Conf",
-        location="Constantine",
-        date="2026-12-01",
-        capacity=200,
-    )
+# Integration Test 2: Participant Registration & Event Sign-up Workflow
+def test_register_participant_to_event_integration():
+    # 1. Create Event
+    e_resp = client.post("/events/", json={
+        "title": "Cybersecurity Workshop", "location": "NTIC",
+        "date": "2026-11-15", "capacity": 50
+    })
+    event_id = e_resp.json()["id"]
 
-    get_response = client.get(f"/events/{event['id']}")
+    # 2. Create Participant
+    p_resp = client.post("/participants/", json={
+        "name": "Alice Dev", "email": "alice@example.com"
+    })
+    assert p_resp.status_code == 201
+    part_id = p_resp.json()["id"]
 
-    assert get_response.status_code == 200, get_response.text
-    assert get_response.json()["title"] == "DevOps Integration Conf"
+    # 3. Register Participant to Event
+    reg_resp = client.post(f"/events/{event_id}/register/{part_id}")
+    assert reg_resp.status_code == 201
 
-
-def test_register_participant_to_event_integration(client: TestClient) -> None:
-    """A participant registered to an event must appear in the attendees list."""
-    event = create_event(
-        client,
-        title="Cybersecurity Workshop",
-        location="NTIC",
-        date="2026-11-15",
-        capacity=50,
-    )
-    participant = create_participant(
-        client,
-        name="Alice Dev",
-        email="alice@example.com",
-    )
-
-    register_response = client.post(
-        f"/events/{event['id']}/register/{participant['id']}"
-    )
-    assert register_response.status_code == 200, register_response.text
-
-    list_response = client.get(f"/events/{event['id']}/participants")
-    assert list_response.status_code == 200, list_response.text
-    assert any(
-        attendee["id"] == participant["id"]
-        for attendee in list_response.json()
-    )
+    # 4. Verify Registration via Event Attendees List
+    list_resp = client.get(f"/events/{event_id}/participants")
+    assert list_resp.status_code == 200
+    assert any(p["id"] == part_id for p in list_resp.json())
 
 
-def test_register_non_existent_event_returns_404(client: TestClient) -> None:
-    """Registering to an event that does not exist must return 404."""
-    participant = create_participant(
-        client,
-        name="Bob Tester",
-        email="bob@example.com",
-    )
-
-    response = client.post(f"/events/9999/register/{participant['id']}")
-
+# Integration Test 3: Edge Case - Registering to Non-Existent Event
+def test_register_non_existent_event_returns_404():
+    response = client.post("/events/9999/register/1")
     assert response.status_code == 404
