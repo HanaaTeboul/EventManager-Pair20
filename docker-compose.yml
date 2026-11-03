@@ -1,10 +1,21 @@
 version: '3.8'
+
 services:
-  web:
+  backend:
     build: .
+    container_name: eventmanager_backend
     ports:
       - "8000:8000"
     volumes:
       - events_sqlite_data:/app
+
+  frontend:
+    build: ./frontend
+    container_name: eventmanager_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
 volumes:
   events_sqlite_data:
