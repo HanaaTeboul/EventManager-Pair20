@@ -16,9 +16,12 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        fsGroup: 1000
+        runAsGroup: 1000
       containers:
         - name: backend
-          image: YOUR_BACKEND_IMAGE
+          image: eventmanager-pair20-backend:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           livenessProbe:
