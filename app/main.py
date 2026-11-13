@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
 from .database import Base, engine
+
+
 from .routers import events, participants, registrations
 
 from fastapi.middleware.cors import CORSMiddleware
