@@ -20,7 +20,7 @@ spec:
         runAsGroup: 1000
       containers:
         - name: backend
-          image: hanaateboul/eventmanager-frontend:latest
+          image: hanaateboul/eventmanager-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
