@@ -33,7 +33,7 @@ spec:
       containers:
         - name: backend
           image: hanaateboul/eventmanager-backend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           livenessProbe:
