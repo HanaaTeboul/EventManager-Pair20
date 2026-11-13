@@ -32,7 +32,7 @@ spec:
 
       containers:
         - name: backend
-          image: hanaateboul/eventmanager-backend:latest
+          image: zaiiiineb/eventmanager-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
