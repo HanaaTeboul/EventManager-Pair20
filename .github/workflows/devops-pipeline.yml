@@ -1,58 +1,131 @@
+
 name: Event Manager CI/CD Pipeline
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
 jobs:
+
+  # JOB 1: Run Tests
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Set up Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install dependencies
+
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
       - name: Run Unit & Integration Tests
         run: pytest
+
+
+  # JOB 2: Build and Push Backend
   build-and-push-backend:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
       - name: Build & Push Backend Image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/eventmanager-backend:latest
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/eventmanager-backend:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/eventmanager-backend:${{ github.sha }}
 
+
+  # JOB 3: Build and Push Frontend
   build-and-push-frontend:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
       - name: Build & Push Frontend Image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/eventmanager-frontend:latest
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/eventmanager-frontend:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/eventmanager-frontend:${{ github.sha }}
+
+
+  # JOB 4: Deploy to Kubernetes
+  deploy:
+    needs:
+      - build-and-push-backend
+      - build-and-push-frontend
+
+    runs-on: self-hosted
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Kubernetes Connection
+        run: kubectl cluster-info
+
+      - name: Apply Kubernetes Manifests
+        run: kubectl apply -f k8s/
+
+      - name: Restart Deployments to Pull New Images
+        shell: powershell
+        run: |
+          $deployments = kubectl get deployments -o name
+
+          foreach ($deployment in $deployments) {
+            kubectl rollout restart $deployment
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to restart $deployment"
+            }
+
+            kubectl rollout status $deployment --timeout=180s
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Deployment failed: $deployment"
+            }
+          }
+
+      - name: Verify Final Deployment
+        run: |
+          kubectl get deployments
+          kubectl get pods
+          kubectl get services
