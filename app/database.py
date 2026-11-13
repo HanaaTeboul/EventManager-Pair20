@@ -1,7 +1,9 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+import os
 
-DATABASE_URL = "sqlite:///./events.db"
+DB_DIR = "/app/data" if os.path.isdir("/app/data") else os.getcwd()
+DATABASE_URL = f"sqlite:///{os.path.join(DB_DIR, 'events.db')}"
 
 engine = create_engine(
     DATABASE_URL,
